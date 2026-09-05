@@ -252,6 +252,13 @@ export default function Page() {
     const v = videoRef.current!;
     if (v.readyState >= 2) {
       draw(v, v.videoWidth, v.videoHeight, lastBoxesRef.current);
+      const now = performance.now();
+      if (now - fpsRef.current.t >= 1000) {
+        setFps(fpsRef.current.n);
+        fpsRef.current.n = 0; fpsRef.current.t = now;
+        setElapsed(Math.round((Date.now() - startRef.current) / 1000));
+        if (v.duration) setVprog(v.currentTime / v.duration);
+      }
       if (!busyRef.current) {
         busyRef.current = true;
         (async () => {
@@ -259,9 +266,7 @@ export default function Page() {
             const dets = await detect(v, v.videoWidth, v.videoHeight, 512);
             const boxes = track(dets, v, v.videoWidth, v.videoHeight);
             lastBoxesRef.current = boxes.map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h, cls: b.cls, peak: b.peak }));
-            framesRef.current++;
-            const fr = fpsRef.current; fr.n++; const now = performance.now();
-            if (now - fr.t >= 1000) { setFps(Math.round((fr.n * 1000) / (now - fr.t))); fr.n = 0; fr.t = now; setElapsed(Math.round((Date.now() - startRef.current) / 1000)); if (v.duration) setVprog(v.currentTime / v.duration); }
+            framesRef.current++; fpsRef.current.n++;
           } catch {}
           busyRef.current = false;
         })();
@@ -269,7 +274,6 @@ export default function Page() {
     }
     rafRef.current = requestAnimationFrame(loop);
   }, [detect, track, draw]);
-
   const grabFrame = useCallback(() => {
     let c = snapRef.current; if (!c) { c = document.createElement("canvas"); snapRef.current = c; }
     const g = c.getContext("2d")!;
@@ -347,7 +351,7 @@ export default function Page() {
         fitCanvas();
         draw(img, img.naturalWidth, img.naturalHeight, []);
         try {
-          const dets = await detect(img, img.naturalWidth, img.naturalHeight, 1280);
+          const dets = await detect(img, img.naturalWidth, img.naturalHeight, 900);
           draw(img, img.naturalWidth, img.naturalHeight, dets);
           dets.forEach((d, i) => logIncident(1000 + i, d.cls, d.score, d, img, img.naturalWidth, img.naturalHeight, 1));
           saveHistory(incRef.current, null, "image");

@@ -5,6 +5,7 @@ import path from "path";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 const N = 640;
 const MODEL = path.join(process.cwd(), "models", "best.onnx");
