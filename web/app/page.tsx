@@ -11,8 +11,7 @@ type Hist = { id: string; ts: number; mode: string; total: number; crit: number;
 
 const NAMES = ["break", "thunderbolt", "foreign object"];
 const SEV_COLOR: Record<Sev, string> = { Critical: "#FF3B3B", High: "#FF8A2F", Medium: "#C99A18" };
-const LIVE_INPUT = 640, IMAGE_INPUT = 640;
-const CONFIRM = 3, MAX_MISSED = 12, IOU_MATCH = 0.3, SKIP = 5;
+const CONFIRM = 2, MAX_MISSED = 8, IOU_MATCH = 0.3;
 const HKEY = "cableguard_history_v1";
 
 function iou(a: Track | Det, b: Det) {
@@ -43,7 +42,7 @@ function sevDrivers(i: Incident) {
   const d: string[] = [];
   d.push(i.conf >= 0.75 ? "high detection confidence" : i.conf >= 0.5 ? "moderate confidence" : "low confidence");
   if (i.areaFrac >= 0.03) d.push("a large affected area"); else if (i.areaFrac >= 0.01) d.push("a moderate affected area");
-  if (i.persist >= 15) d.push("persistence across many frames"); else if (i.persist >= CONFIRM + 2) d.push("confirmation across multiple frames");
+  if (i.persist >= 8) d.push("persistence across many frames"); else if (i.persist >= CONFIRM + 1) d.push("confirmation across multiple frames");
   return d;
 }
 function evidenceText(i: Incident) {
@@ -123,8 +122,6 @@ function buildAnalysis(incidents: Incident[], ai: AI | null, ctx: { mode: string
 }
 
 export default function Page() {
-  const [ready, setReady] = useState(false);
-  const [loadPct, setLoadPct] = useState(0);
   const [mode, setMode] = useState<"live" | "video" | "image">("live");
   const [running, setRunning] = useState(false);
   const [thresh, setThresh] = useState(0.45);
@@ -133,7 +130,6 @@ export default function Page() {
   const [vprog, setVprog] = useState(0);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [provider, setProvider] = useState("");
   const [showReport, setShowReport] = useState(false);
   const [utility, setUtility] = useState("Grid Operator");
   const [ai, setAi] = useState<AI | null>(null);
@@ -141,15 +137,14 @@ export default function Page() {
   const [aiErr, setAiErr] = useState<string | null>(null);
   const [geo, setGeo] = useState<Geo>(null);
   const [history, setHistory] = useState<Hist[]>([]);
+  const [busyImg, setBusyImg] = useState(false);
 
-  const ortRef = useRef<any>(null);
-  const sessionRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const runningRef = useRef(false);
   const threshRef = useRef(thresh);
-  const preRef = useRef<HTMLCanvasElement | null>(null);
+  const sendRef = useRef<HTMLCanvasElement | null>(null);
   const cropRef = useRef<HTMLCanvasElement | null>(null);
   const snapRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -161,7 +156,6 @@ export default function Page() {
   const incRef = useRef<Incident[]>([]);
   const startRef = useRef(0);
   const framesRef = useRef(0);
-  const skipRef = useRef(0);
   const lastBoxesRef = useRef<any[]>([]);
   const geoRef = useRef<Geo>(null);
   const watchRef = useRef<number | null>(null);
@@ -179,75 +173,30 @@ export default function Page() {
     return () => { if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current); };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const ort = await import("onnxruntime-web/webgpu");
-        ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
-        ort.env.wasm.numThreads = 1; ort.env.logLevel = "error"; ortRef.current = ort;
-        const resp = await fetch("/models/best.onnx");
-        const total = Number(resp.headers.get("content-length") || 0);
-        const reader = resp.body!.getReader();
-        const chunks: Uint8Array[] = []; let recv = 0;
-        for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); recv += value.length; if (total) setLoadPct(Math.round((recv / total) * 100)); }
-        const buf = new Uint8Array(recv); let o = 0; for (const c of chunks) { buf.set(c, o); o += c.length; }
-        let session: any, prov = "wasm";
-        try { session = await ort.InferenceSession.create(buf, { executionProviders: ["webgpu"], logSeverityLevel: 3 }); prov = "webgpu"; }
-        catch { session = await ort.InferenceSession.create(buf, { executionProviders: ["wasm"], logSeverityLevel: 3 }); prov = "wasm"; }
-        if (cancelled) return;
-        sessionRef.current = session; setProvider(prov); setReady(true);
-      } catch (e: any) { setErr("Failed to load model: " + (e?.message || e)); }
-    })();
-    return () => { cancelled = true; };
+  // send a frame/image to the server detector
+  const detect = useCallback(async (src: CanvasImageSource, sw: number, sh: number, maxSide: number) => {
+    let c = sendRef.current; if (!c) { c = document.createElement("canvas"); sendRef.current = c; }
+    const s = Math.min(maxSide / sw, maxSide / sh, 1);
+    c.width = Math.round(sw * s); c.height = Math.round(sh * s);
+    c.getContext("2d")!.drawImage(src, 0, 0, c.width, c.height);
+    const dataUrl = c.toDataURL("image/jpeg", 0.75);
+    const r = await fetch("/api/detect", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl, thresh: threshRef.current }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || "detect failed");
+    const j = await r.json();
+    // server boxes are in the scaled image space -> map back to source space
+    const back = 1 / s;
+    return (j.dets as Det[]).map(d => ({ ...d, x: d.x * back, y: d.y * back, w: d.w * back, h: d.h * back }));
   }, []);
-
-  const preprocess = useCallback((src: CanvasImageSource, sw: number, sh: number, N: number) => {
-    let pre = preRef.current;
-    if (!pre) { pre = document.createElement("canvas"); preRef.current = pre; }
-    if (pre.width !== N) { pre.width = N; pre.height = N; }
-    const g = pre.getContext("2d", { willReadFrequently: true })!;
-    const scale = Math.min(N / sw, N / sh);
-    const nw = sw * scale, nh = sh * scale, px = (N - nw) / 2, py = (N - nh) / 2;
-    g.fillStyle = "rgb(114,114,114)"; g.fillRect(0, 0, N, N); g.drawImage(src, px, py, nw, nh);
-    const { data } = g.getImageData(0, 0, N, N);
-    const plane = N * N; const f = new Float32Array(3 * plane);
-        for (let i = 0; i < plane; i++) { f[i] = data[i*4+2]/255; f[plane+i] = data[i*4+1]/255; f[2*plane+i] = data[i*4]/255; }
-    return { f, scale, px, py };
-  }, []);
-
-  const decode = useCallback((out: any, scale: number, px: number, py: number, N: number) => {
-    const dims = out.dims as number[]; const d = out.data as Float32Array;
-    let n: number, rowmajor = true;
-    if (dims.length === 3 && dims[2] === 6) { n = dims[1]; rowmajor = true; }
-    else if (dims.length === 3 && dims[1] === 6) { n = dims[2]; rowmajor = false; }
-    else { n = dims[1] || 0; rowmajor = true; }
-    const get = (i: number, j: number) => (rowmajor ? d[i*6+j] : d[j*n+i]);
-        const th = threshRef.current; const res: Det[] = [];
-    console.log("dims", dims, "n", n, "first row", [get(0,0),get(0,1),get(0,2),get(0,3),get(0,4),get(0,5)]);
-    for (let i = 0; i < n; i++) {
-      let x1 = get(i,0), y1 = get(i,1), x2 = get(i,2), y2 = get(i,3); const score = get(i,4), cls = get(i,5);
-      if (!score || score < th) continue;
-      if (x2 <= 1.5 && y2 <= 1.5) { x1 *= N; y1 *= N; x2 *= N; y2 *= N; }
-      res.push({ x: (x1-px)/scale, y: (y1-py)/scale, w: (x2-x1)/scale, h: (y2-y1)/scale, score, cls: Math.round(cls) });
-    }
-    return res;
-  }, []);
-
-  const infer = useCallback(async (src: CanvasImageSource, sw: number, sh: number, N: number) => {
-    const ort = ortRef.current, session = sessionRef.current; if (!session) return [] as Det[];
-    const { f, scale, px, py } = preprocess(src, sw, sh, N);
-    const t = new ort.Tensor("float32", f, [1, 3, N, N]);
-    const out = await session.run({ [session.inputNames[0]]: t });
-    return decode(out[session.outputNames[0]], scale, px, py, N);
-  }, [preprocess, decode]);
 
   const makeThumb = useCallback((src: CanvasImageSource, d: any, sw: number, sh: number) => {
     let c = cropRef.current; if (!c) { c = document.createElement("canvas"); c.width = 96; c.height = 96; cropRef.current = c; }
     const g = c.getContext("2d")!; const pad = 0.2;
-    let sx = Math.max(0, d.x - d.w*pad), sy = Math.max(0, d.y - d.h*pad);
-    let sW = Math.min(sw - sx, d.w*(1+2*pad)), sH = Math.min(sh - sy, d.h*(1+2*pad));
-    g.fillStyle = "#05080B"; g.fillRect(0,0,96,96);
+    let sx = Math.max(0, d.x - d.w * pad), sy = Math.max(0, d.y - d.h * pad);
+    let sW = Math.min(sw - sx, d.w * (1 + 2 * pad)), sH = Math.min(sh - sy, d.h * (1 + 2 * pad));
+    g.fillStyle = "#05080B"; g.fillRect(0, 0, 96, 96);
     if (sW > 0 && sH > 0) g.drawImage(src, sx, sy, sW, sH, 0, 0, 96, 96);
     return c.toDataURL("image/jpeg", 0.7);
   }, []);
@@ -255,7 +204,7 @@ export default function Page() {
   const logIncident = useCallback((id: number, cls: number, conf: number, box: any, src: CanvasImageSource, sw: number, sh: number, persist: number) => {
     const areaFrac = (box.w * box.h) / (sw * sh);
     const sev = sevBucket(sevScore(cls, conf, areaFrac));
-    const inc: Incident = { id, cls, sev, conf, ts: Date.now(), thumb: makeThumb(src, box, sw, sh), action: actionFor(cls, sev), areaFrac, persist, region: regionOf((box.y + box.h/2)/sh), geo: geoRef.current };
+    const inc: Incident = { id, cls, sev, conf, ts: Date.now(), thumb: makeThumb(src, box, sw, sh), action: actionFor(cls, sev), areaFrac, persist, region: regionOf((box.y + box.h / 2) / sh), geo: geoRef.current };
     incRef.current = [inc, ...incRef.current].slice(0, 200);
     setIncidents(incRef.current);
   }, [makeThumb]);
@@ -264,13 +213,13 @@ export default function Page() {
     const tracks = tracksRef.current;
     tracks.forEach(t => t.missed++);
     const used = new Set<number>();
-    dets.sort((a,b) => b.score - a.score);
+    dets.sort((a, b) => b.score - a.score);
     for (const det of dets) {
       let best = -1, bi = -1;
-      tracks.forEach((t,i) => { if (used.has(i) || t.cls !== det.cls) return; const v = iou(t, det); if (v > IOU_MATCH && v > best) { best = v; bi = i; } });
+      tracks.forEach((t, i) => { if (used.has(i) || t.cls !== det.cls) return; const v = iou(t, det); if (v > IOU_MATCH && v > best) { best = v; bi = i; } });
       if (bi >= 0) {
         const t = tracks[bi]; used.add(bi);
-        t.x=det.x; t.y=det.y; t.w=det.w; t.h=det.h; t.hits++; t.missed=0; t.peak=Math.max(t.peak, det.score);
+        t.x = det.x; t.y = det.y; t.w = det.w; t.h = det.h; t.hits++; t.missed = 0; t.peak = Math.max(t.peak, det.score);
         if (t.hits >= CONFIRM && !t.logged) { t.logged = true; logIncident(t.id, t.cls, t.peak, t, src, sw, sh, t.hits); }
       } else tracks.push({ id: nextIdRef.current++, cls: det.cls, x: det.x, y: det.y, w: det.w, h: det.h, hits: 1, missed: 0, peak: det.score, logged: false });
     }
@@ -285,16 +234,16 @@ export default function Page() {
 
   const draw = useCallback((src: CanvasImageSource, sw: number, sh: number, boxes: any[]) => {
     const cv = canvasRef.current!; const ctx = cv.getContext("2d")!; const cw = cv.width, ch = cv.height;
-    const scale = Math.min(cw/sw, ch/sh); const dw = sw*scale, dh = sh*scale, dx = (cw-dw)/2, dy = (ch-dh)/2;
-    ctx.clearRect(0,0,cw,ch); ctx.drawImage(src, dx, dy, dw, dh);
+    const scale = Math.min(cw / sw, ch / sh); const dw = sw * scale, dh = sh * scale, dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+    ctx.clearRect(0, 0, cw, ch); ctx.drawImage(src, dx, dy, dw, dh);
     for (const b of boxes) {
-      const sev = sevBucket(sevScore(b.cls, b.peak, (b.w*b.h)/(sw*sh))); const col = SEV_COLOR[sev];
-      const bx = dx + b.x*scale, by = dy + b.y*scale, bw = b.w*scale, bh = b.h*scale;
+      const sev = sevBucket(sevScore(b.cls, b.peak ?? b.score, (b.w * b.h) / (sw * sh))); const col = SEV_COLOR[sev];
+      const bx = dx + b.x * scale, by = dy + b.y * scale, bw = b.w * scale, bh = b.h * scale;
       ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.strokeRect(bx, by, bw, bh);
-      const label = `${NAMES[b.cls]} · ${sev} ${(b.peak*100).toFixed(0)}%`;
+      const label = `${NAMES[b.cls]} · ${sev} ${((b.peak ?? b.score) * 100).toFixed(0)}%`;
       ctx.font = "600 13px 'Space Grotesk', sans-serif"; const tw = ctx.measureText(label).width;
-      ctx.fillStyle = col; ctx.fillRect(bx-1.25, by-20, tw+12, 20);
-      ctx.fillStyle = "#0a0a0a"; ctx.fillText(label, bx+5, by-6);
+      ctx.fillStyle = col; ctx.fillRect(bx - 1.25, by - 20, tw + 12, 20);
+      ctx.fillStyle = "#0a0a0a"; ctx.fillText(label, bx + 5, by - 6);
     }
   }, []);
 
@@ -302,35 +251,36 @@ export default function Page() {
     if (!runningRef.current) return;
     const v = videoRef.current!;
     if (v.readyState >= 2) {
-      if (skipRef.current > 0 && !busyRef.current) {
-        skipRef.current--;
-        draw(v, v.videoWidth, v.videoHeight, lastBoxesRef.current);
-      } else if (!busyRef.current) {
-        busyRef.current = true; skipRef.current = SKIP;
-        const dets = await infer(v, v.videoWidth, v.videoHeight, LIVE_INPUT);
-        const boxes = track(dets, v, v.videoWidth, v.videoHeight);
-        lastBoxesRef.current = boxes.map(b => ({ x:b.x, y:b.y, w:b.w, h:b.h, cls:b.cls, peak:b.peak }));
-        draw(v, v.videoWidth, v.videoHeight, lastBoxesRef.current);
-        framesRef.current++;
-        const fr = fpsRef.current; fr.n++; const now = performance.now();
-        if (now - fr.t >= 500) { setFps(Math.round((fr.n*1000)/(now-fr.t))); fr.n=0; fr.t=now; setElapsed(Math.round((Date.now()-startRef.current)/1000)); if (v.duration) setVprog(v.currentTime/v.duration); }
-        busyRef.current = false;
+      draw(v, v.videoWidth, v.videoHeight, lastBoxesRef.current);
+      if (!busyRef.current) {
+        busyRef.current = true;
+        (async () => {
+          try {
+            const dets = await detect(v, v.videoWidth, v.videoHeight, 512);
+            const boxes = track(dets, v, v.videoWidth, v.videoHeight);
+            lastBoxesRef.current = boxes.map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h, cls: b.cls, peak: b.peak }));
+            framesRef.current++;
+            const fr = fpsRef.current; fr.n++; const now = performance.now();
+            if (now - fr.t >= 1000) { setFps(Math.round((fr.n * 1000) / (now - fr.t))); fr.n = 0; fr.t = now; setElapsed(Math.round((Date.now() - startRef.current) / 1000)); if (v.duration) setVprog(v.currentTime / v.duration); }
+          } catch {}
+          busyRef.current = false;
+        })();
       }
     }
     rafRef.current = requestAnimationFrame(loop);
-  }, [infer, track, draw]);
+  }, [detect, track, draw]);
 
   const grabFrame = useCallback(() => {
     let c = snapRef.current; if (!c) { c = document.createElement("canvas"); snapRef.current = c; }
     const g = c.getContext("2d")!;
     if (mode === "image" && imgRef.current) {
-      const im = imgRef.current; const s = Math.min(1024/im.naturalWidth, 1024/im.naturalHeight, 1);
-      c.width = im.naturalWidth*s; c.height = im.naturalHeight*s;
+      const im = imgRef.current; const s = Math.min(1024 / im.naturalWidth, 1024 / im.naturalHeight, 1);
+      c.width = im.naturalWidth * s; c.height = im.naturalHeight * s;
       g.drawImage(im, 0, 0, c.width, c.height);
     } else {
       const v = videoRef.current!; if (!v.videoWidth) return null;
-      const s = Math.min(1024/v.videoWidth, 1024/v.videoHeight, 1);
-      c.width = v.videoWidth*s; c.height = v.videoHeight*s;
+      const s = Math.min(1024 / v.videoWidth, 1024 / v.videoHeight, 1);
+      c.width = v.videoWidth * s; c.height = v.videoHeight * s;
       g.drawImage(v, 0, 0, c.width, c.height);
     }
     return c.toDataURL("image/jpeg", 0.85);
@@ -339,7 +289,7 @@ export default function Page() {
   const runAI = useCallback(async () => {
     const image = grabFrame(); if (!image) { setAiErr("No frame to analyse."); return; }
     setAiBusy(true); setAiErr(null); setAi(null);
-    const f = incRef.current.length ? incRef.current.slice(0,5).map(i => `${NAMES[i.cls]} (${(i.conf*100).toFixed(0)}%)`).join(", ") : "no faults detected";
+    const f = incRef.current.length ? incRef.current.slice(0, 5).map(i => `${NAMES[i.cls]} (${(i.conf * 100).toFixed(0)}%)`).join(", ") : "no faults detected";
     try {
       const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image, findings: f }) });
       const d = await r.json();
@@ -358,8 +308,8 @@ export default function Page() {
 
   const resetScan = useCallback(() => {
     tracksRef.current = []; incRef.current = []; setIncidents([]); framesRef.current = 0; setElapsed(0); setVprog(0);
-    setAi(null); setAiErr(null); lastBoxesRef.current = []; skipRef.current = 0;
-    const cv = canvasRef.current; if (cv) cv.getContext("2d")!.clearRect(0,0,cv.width,cv.height);
+    setAi(null); setAiErr(null); lastBoxesRef.current = [];
+    const cv = canvasRef.current; if (cv) cv.getContext("2d")!.clearRect(0, 0, cv.width, cv.height);
   }, []);
 
   const startCam = useCallback(async () => {
@@ -389,37 +339,41 @@ export default function Page() {
 
   const onImage = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    stopCam(false); resetScan();
+    stopCam(false); resetScan(); setErr(null); setBusyImg(true);
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
       requestAnimationFrame(async () => {
         fitCanvas();
-        const dets = await infer(img, img.naturalWidth, img.naturalHeight, IMAGE_INPUT);
-        draw(img, img.naturalWidth, img.naturalHeight, dets.map(d => ({...d, peak: d.score})));
-        dets.forEach((d,i) => logIncident(1000+i, d.cls, d.score, d, img, img.naturalWidth, img.naturalHeight, 1));
-        setTimeout(async () => { await runAI(); saveHistory(incRef.current, null, "image"); }, 200);
+        draw(img, img.naturalWidth, img.naturalHeight, []);
+        try {
+          const dets = await detect(img, img.naturalWidth, img.naturalHeight, 1280);
+          draw(img, img.naturalWidth, img.naturalHeight, dets);
+          dets.forEach((d, i) => logIncident(1000 + i, d.cls, d.score, d, img, img.naturalWidth, img.naturalHeight, 1));
+          saveHistory(incRef.current, null, "image");
+        } catch (e: any) { setErr(e?.message || "Detection failed."); }
+        setBusyImg(false);
       });
     };
     img.src = URL.createObjectURL(file);
-  }, [stopCam, resetScan, fitCanvas, infer, draw, logIncident, runAI, saveHistory]);
+  }, [stopCam, resetScan, fitCanvas, detect, draw, logIncident, saveHistory]);
 
   const exportData = useCallback((fmt: "json" | "csv") => {
     const rows = incRef.current;
     let blob: Blob, name: string;
     if (fmt === "json") {
-      blob = new Blob([JSON.stringify({ operator: utility, generated: new Date().toISOString(), mode, frames: framesRef.current, visionReview: ai, incidents: rows.map(({thumb, ...r}) => r) }, null, 2)], { type: "application/json" });
+      blob = new Blob([JSON.stringify({ operator: utility, generated: new Date().toISOString(), mode, frames: framesRef.current, visionReview: ai, incidents: rows.map(({ thumb, ...r }) => r) }, null, 2)], { type: "application/json" });
       name = `cable-inspection-${Date.now()}.json`;
     } else {
       const head = "id,type,severity,confidence,timestamp,region,area_pct,persisted_frames,latitude,longitude,action";
-      const body = rows.map(r => [r.id, NAMES[r.cls], r.sev, (r.conf*100).toFixed(1), new Date(r.ts).toISOString(), r.region, (r.areaFrac*100).toFixed(2), r.persist, r.geo?.lat ?? "", r.geo?.lon ?? "", `"${r.action.replace(/"/g,"'")}"`].join(",")).join("\n");
+      const body = rows.map(r => [r.id, NAMES[r.cls], r.sev, (r.conf * 100).toFixed(1), new Date(r.ts).toISOString(), r.region, (r.areaFrac * 100).toFixed(2), r.persist, r.geo?.lat ?? "", r.geo?.lon ?? "", `"${r.action.replace(/"/g, "'")}"`].join(",")).join("\n");
       blob = new Blob([head + "\n" + body], { type: "text/csv" });
       name = `cable-inspection-${Date.now()}.csv`;
     }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
   }, [utility, mode, ai]);
 
-  useEffect(() => { if (ready) fitCanvas(); }, [ready, mode, fitCanvas]);
+  useEffect(() => { fitCanvas(); }, [mode, fitCanvas]);
   useEffect(() => { const r = () => fitCanvas(); window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, [fitCanvas]);
   useEffect(() => () => { runningRef.current = false; if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop()); }, []);
 
@@ -428,7 +382,7 @@ export default function Page() {
 
   const counts = { Critical: 0, High: 0, Medium: 0 } as Record<Sev, number>;
   incidents.forEach(i => counts[i.sev]++);
-  const mm = String(Math.floor(elapsed/60)).padStart(2,"0"), ss = String(elapsed%60).padStart(2,"0");
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0"), ss = String(elapsed % 60).padStart(2, "0");
   const A = showReport ? buildAnalysis(incidents, ai, { mode, frames: framesRef.current || (mode === "image" ? 1 : 0), dur: `${mm}:${ss}` }) : null;
   const falsePos = ai && ai.cablePresent === "no" && incidents.length > 0;
   const aiTag = ai ? (ai.cablePresent === "yes" ? { t: "Cable confirmed", c: "#35E0C4" } : ai.cablePresent === "no" ? { t: "No cable seen", c: "#FF5A3C" } : { t: "Unclear view", c: "#C99A18" }) : null;
@@ -446,7 +400,7 @@ export default function Page() {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M12 21s7-6.4 7-11a7 7 0 1 0-14 0c0 4.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>
             {geo ? "GPS" : "—"}
           </span>
-          <span className="prov">{provider || "loading"}</span>
+          <span className="prov">server</span>
           <span className={"live" + (running ? " on" : "")}><i />{running ? "SCANNING" : "IDLE"}</span>
         </div>
       </header>
@@ -455,14 +409,14 @@ export default function Page() {
         <div className="stagewrap">
           <div className="stage">
             <canvas ref={canvasRef} />
-            {!ready && !err && <div className="overlay"><div className="spin" /><p>Loading detector… {loadPct}%</p></div>}
-            {ready && mode === "live" && !running && !err && <div className="overlay"><button className="cta" onClick={startCam}>Start scan</button><p>Point the camera along a cable to inspect for breaks, arc faults and foreign objects.</p></div>}
-            {ready && mode === "video" && !running && incidents.length === 0 && !ai && !err && <div className="overlay"><label className="cta">Upload footage<input type="file" accept="video/*" hidden onChange={onVideo} /></label><p>Upload a recorded line-scan to auto-generate an inspection report.</p></div>}
-            {ready && mode === "image" && !imgRef.current && !err && <div className="overlay"><label className="cta">Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label><p>Analyse a single still image at full resolution.</p></div>}
+            {mode === "live" && !running && !err && <div className="overlay"><button className="cta" onClick={startCam}>Start scan</button><p>Point the camera along a cable to inspect for breaks, arc faults and foreign objects.</p></div>}
+            {mode === "video" && !running && incidents.length === 0 && !ai && !err && <div className="overlay"><label className="cta">Upload footage<input type="file" accept="video/*" hidden onChange={onVideo} /></label><p>Upload a recorded line-scan to auto-generate an inspection report.</p></div>}
+            {mode === "image" && !imgRef.current && !err && <div className="overlay"><label className="cta">Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label><p>Analyse a single still image at full resolution.</p></div>}
+            {busyImg && <div className="overlay"><div className="spin" /><p>Analysing image…</p></div>}
             {err && <div className="overlay err"><p>{err}</p></div>}
             <video ref={videoRef} playsInline muted style={{ display: "none" }} />
           </div>
-          {mode === "video" && <div className="vbar"><i style={{ width: `${vprog*100}%` }} /></div>}
+          {mode === "video" && <div className="vbar"><i style={{ width: `${vprog * 100}%` }} /></div>}
         </div>
 
         <aside className="side">
@@ -473,18 +427,18 @@ export default function Page() {
           </div>
 
           <div className="ctl">
-            {mode === "live" && (running ? <button className="btn stop" onClick={() => stopCam(true)}>Stop scan</button> : <button className="btn go" onClick={startCam} disabled={ready === false}>Start scan</button>)}
-            {mode === "video" && (running ? <button className="btn stop" onClick={() => stopCam(true)}>Stop</button> : <label className="btn go" style={{ opacity: ready ? 1 : .45 }}>Upload footage<input type="file" accept="video/*" hidden onChange={onVideo} disabled={ready === false} /></label>)}
-            {mode === "image" && <label className="btn go" style={{ opacity: ready ? 1 : .45 }}>Choose image<input type="file" accept="image/*" hidden onChange={onImage} disabled={ready === false} /></label>}
+            {mode === "live" && (running ? <button className="btn stop" onClick={() => stopCam(true)}>Stop scan</button> : <button className="btn go" onClick={startCam}>Start scan</button>)}
+            {mode === "video" && (running ? <button className="btn stop" onClick={() => stopCam(true)}>Stop</button> : <label className="btn go">Upload footage<input type="file" accept="video/*" hidden onChange={onVideo} /></label>)}
+            {mode === "image" && <label className="btn go">Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label>}
             <button className="btn ghost" onClick={() => setShowReport(true)} disabled={incidents.length === 0 && !ai} style={{ flex: "0 0 auto", minWidth: 88 }}>Report</button>
           </div>
 
-          <button className="btn ghost" onClick={runAI} disabled={aiBusy || !ready} style={{ width: "100%" }}>
+          <button className="btn ghost" onClick={runAI} disabled={aiBusy} style={{ width: "100%" }}>
             {aiBusy ? "Analysing…" : "AI Analysis"}
           </button>
 
           <div className="stats">
-            <div className="stat"><span className="k">Engine</span><span className="v" style={{ fontSize: ".92rem", textTransform: "uppercase" }}>{provider || "—"}</span></div>
+            <div className="stat"><span className="k">Engine</span><span className="v" style={{ fontSize: ".92rem", textTransform: "uppercase" }}>server</span></div>
             <div className="stat"><span className="k">{mode === "image" ? "Faults" : "FPS"}</span><span className="v">{mode === "image" ? incidents.length : (running ? fps : "—")}</span></div>
             <div className="stat"><span className="k">Duration</span><span className="v">{mode === "image" ? "—" : `${mm}:${ss}`}</span></div>
           </div>
@@ -535,7 +489,7 @@ export default function Page() {
                       <div className="top"><span className="ty">{NAMES[i.cls]}</span><span className="chip" style={{ background: SEV_COLOR[i.sev] }}>{i.sev}</span></div>
                       <div className="act">{i.action}</div>
                     </div>
-                    <span className="cf">{(i.conf*100).toFixed(0)}%</span>
+                    <span className="cf">{(i.conf * 100).toFixed(0)}%</span>
                   </div>
                 ))}
             </div>
@@ -555,7 +509,7 @@ export default function Page() {
             </div>
           </div>
 
-          <div className="foot">YOLO26m · 3 classes · mAP50 0.884 · local + vision review</div>
+          <div className="foot">YOLO26m · 3 classes · mAP50 0.884 · server inference + vision review</div>
         </aside>
       </main>
 
@@ -569,7 +523,6 @@ export default function Page() {
               <span>Date: {new Date().toLocaleString()}</span>
               {mode !== "image" && <span>Scan duration: {mm}:{ss}</span>}
               <span>Frames analysed: {framesRef.current || (mode === "image" ? 1 : 0)}</span>
-              <span>Engine: {provider}</span>
               {geo && <span>Location: {geo.lat.toFixed(5)}, {geo.lon.toFixed(5)} (±{geo.acc.toFixed(0)}m)</span>}
             </div>
 
@@ -600,14 +553,14 @@ export default function Page() {
             <div className="rsection">
               <h3>Combined assessment</h3>
               <div className="rnarr">
-                {A.narr.map((p,i) => <p key={i}>{p}</p>)}
+                {A.narr.map((p, i) => <p key={i}>{p}</p>)}
                 <p className="caveat">{A.caveat}</p>
               </div>
             </div>
 
             <div className="rsection">
               <h3>Prioritized recommendations</h3>
-              <ul className="rrecs">{A.recs.map((r,i) => <li key={i} style={{ ["--rc" as any]: r.c }}>{r.t}</li>)}</ul>
+              <ul className="rrecs">{A.recs.map((r, i) => <li key={i} style={{ ["--rc" as any]: r.c }}>{r.t}</li>)}</ul>
             </div>
 
             <div className="rsection">
