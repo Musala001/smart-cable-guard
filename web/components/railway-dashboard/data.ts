@@ -58,7 +58,7 @@ export function createSampleDetections(assetBasePath = "/rail-dashboard"): Cable
     const b = RAIL_ROUTES[route][index + 1];
     return {
       id,
-      type: "Damaged cable",
+      type: "Damaged cable" as const,,
       latitude: a[0] + (b[0] - a[0]) * t,
       longitude: a[1] + (b[1] - a[1]) * t,
       confidence,
