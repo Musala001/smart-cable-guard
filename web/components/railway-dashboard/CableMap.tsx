@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RAIL_ROUTES, STATIONS, STATUS_LABEL } from "./data";
+import { STATUS_LABEL } from "./data";
 import { Icon } from "./Icon";
 import type { CableDetection } from "./types";
 import styles from "./CableMap.module.css";
@@ -54,21 +54,6 @@ export function CableMap({ detections, selectedId, isDemo, onSelect, leafletScri
 
     const network = L.layerGroup().addTo(map);
     networkRef.current = network;
-    RAIL_ROUTES.forEach((route) => {
-      L.polyline(route, { color: "#ffffff", weight: 7, opacity: 0.95, interactive: false }).addTo(network);
-      L.polyline(route, { color: "#2b4053", weight: 3, opacity: 0.95, interactive: false }).addTo(network);
-    });
-    STATIONS.forEach((station) => {
-      const circle = L.circleMarker(station.position, {
-        radius: 4.5, color: "#2b4053", weight: 2, fillColor: "#ffffff", fillOpacity: 1,
-      }).addTo(network);
-      circle.bindTooltip(station.name, {
-        permanent: window.innerWidth > 800,
-        direction: "bottom",
-        offset: [0, 5],
-        className: styles.stationTooltip,
-      });
-    });
     markersRef.current = L.layerGroup().addTo(map);
 
     const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }));
