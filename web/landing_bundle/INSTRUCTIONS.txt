@@ -1,0 +1,62 @@
+rAIL LANDING + ROUTING — install steps (Windows, in web\)
+=========================================================
+Unzip into web\. Then do the moves and small edits below.
+
+------------------------------------------------------------
+STEP 1 — copy the new files in (from this zip)
+  xcopy landing_bundle\app app /E /I /Y
+  xcopy landing_bundle\public public /E /I /Y
+This adds:
+  app\page.tsx            (NEW landing page = home "/")   <-- OVERWRITES old home
+  app\landing\landing.css
+  public\rail-landing\*   (logo + afretec image)
+
+  IMPORTANT: app\page.tsx used to be the DETECTOR. Step 2 moves the detector.
+
+------------------------------------------------------------
+STEP 2 — move the detector to /detect
+  The detector code must now live at app\detect\page.tsx.
+  You SAVED the old detector as app\page.tsx before this overwrite? If not,
+  it is in git history. Easiest path:
+
+  a) mkdir app\detect
+  b) Get the detector page.tsx (the big file with the scanner) and save it as:
+        app\detect\page.tsx
+     (If you still have the old app\page.tsx open in an editor, paste it there.
+      Otherwise restore it from git:  git show HEAD:web/app/page.tsx  > app\detect\page.tsx )
+
+  Then make TWO edits inside app\detect\page.tsx:
+
+  EDIT A — the logo. Find the header mark svg:
+     <div className="mark"><svg ...>...</svg></div>
+  Replace the whole <div className="mark">...</div> with:
+     <div className="mark"><img src="/rail-landing/rail-logo.jpeg" alt="rAIL" /></div>
+
+  EDIT B — the header links. Find the line with the Dashboard link:
+     <a href="/dashboard" className="prov" style={{ textDecoration: "none" }}>Dashboard →</a>
+  Replace it with these two links:
+     <a href="/" className="homelink">← Home</a>
+     <a href="/dashboard" className="prov" style={{ textDecoration: "none" }}>Dashboard →</a>
+
+------------------------------------------------------------
+STEP 3 — recolor the detector
+  Open app\globals.css, go to the very end, paste ALL of
+  DETECTOR_CSS_APPEND.txt. Save.
+
+------------------------------------------------------------
+STEP 4 — dashboard back arrow
+  Open components\railway-dashboard\RailwayDashboard.tsx
+  Find the topActions block (has the "Detector" link). It looks like:
+     <a href="/" className={styles.secondaryButton} ...><Icon name="scan" />Detector</a>
+  Change that first link's text/target to Home, and keep a Detector link too:
+     <a href="/" className={styles.secondaryButton} style={{textDecoration:"none"}}>← Home</a>
+     <a href="/detect" className={styles.secondaryButton} style={{textDecoration:"none"}}><Icon name="scan" />Detector</a>
+
+------------------------------------------------------------
+STEP 5 — run
+  npm run dev
+  /          → landing page (Start detection, Open dashboard buttons)
+  /detect    → detector (rAIL logo, green accent, ← Home)
+  /dashboard → dashboard (← Home + Detector links)
+
+On Vercel it deploys the same: "/" is the landing automatically.

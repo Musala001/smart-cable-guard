@@ -130,7 +130,7 @@ export function RailwayDashboard({
   const empty = <div className={styles.emptyState} style={{ padding: 60, textAlign: "center" }}>
     <p style={{ fontSize: "1rem", color: "#3b5549", fontWeight: 700, margin: "0 0 6px" }}>No inspections yet</p>
     <p style={{ maxWidth: 360, margin: "0 auto", color: "#7e9086" }}>Run a scan in the detector with location enabled. Findings appear here on the map, and each scan becomes a full inspection report.</p>
-    <a href="/" className={styles.primaryButton} style={{ marginTop: 18, textDecoration: "none" }}><Icon name="scan" />Open the detector</a>
+    <a href="/detect" className={styles.primaryButton} style={{ marginTop: 18, textDecoration: "none" }}><Icon name="scan" />Open the detector</a>
   </div>;
 
   return <div className={styles.shell}>
@@ -158,7 +158,8 @@ export function RailwayDashboard({
           <p>Monitor, inspect and report on detected cable faults.</p>
         </div>
         <div className={styles.topActions}>
-          <a href="/" className={styles.secondaryButton} style={{ textDecoration: "none" }}><Icon name="scan" />Detector</a>
+                   <a href="/" className={styles.secondaryButton} style={{ textDecoration: "none" }}>← Home</a>
+          <a href="/detect" className={styles.secondaryButton} style={{ textDecoration: "none" }}><Icon name="scan" />Detector</a>
           <button type="button" className={styles.secondaryButton} onClick={exportAllCsv} disabled={!hasData}><Icon name="download" />CSV</button>
           <button type="button" className={styles.primaryButton} onClick={exportAllJson} disabled={!hasData}><Icon name="download" />Export</button>
         </div>

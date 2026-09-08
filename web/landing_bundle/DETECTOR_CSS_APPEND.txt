@@ -1,0 +1,12 @@
+/* ===== APPEND TO END OF app/globals.css : rAIL palette + back link ===== */
+:root{
+  --brand:#8bc995; --brand-deep:#5aa06a; --accent:#8bc995;
+}
+.hdr{background:linear-gradient(180deg,#0d1512,transparent)}
+.mark{background:#263744 !important;box-shadow:0 6px 20px -6px rgba(38,55,68,.7),inset 0 1px 0 rgba(255,255,255,.15) !important;overflow:hidden}
+.mark img{width:100%;height:100%;object-fit:cover;display:block}
+.homelink{display:inline-flex;align-items:center;gap:6px;font-family:'Space Grotesk',sans-serif;font-size:.72rem;color:var(--soft);text-decoration:none;border:1px solid var(--line);background:rgba(255,255,255,.03);padding:5px 10px;border-radius:7px}
+.homelink:hover{color:var(--ink);background:rgba(255,255,255,.07)}
+.btn.go,.cta{background:linear-gradient(180deg,#8bc995,#5aa06a) !important;color:#0b110e !important;box-shadow:0 6px 18px -6px rgba(139,201,149,.5) !important}
+.seg button.on{background:rgba(139,201,149,.16) !important;box-shadow:inset 0 0 0 1px rgba(139,201,149,.35) !important}
+.sv::before,.gps.on i{ }
