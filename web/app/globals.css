@@ -184,3 +184,36 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-seri
 .gps.on{color:#8bc995 !important;border-color:rgba(139,201,149,.35) !important}
 .savedbanner{border-color:rgba(139,201,149,.35) !important;background:linear-gradient(180deg,rgba(139,201,149,.12),rgba(139,201,149,.05)) !important}
 .savedbanner strong{color:#8bc995 !important}
+
+/* Let the detector scroll naturally on tablets and phones. */
+@media screen and (max-width:900px){
+  .wrap{height:auto;min-height:100svh;overflow:visible}
+  .wrap .main{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;overflow:visible}
+  .wrap .stagewrap{min-height:0}
+  .wrap .stage{flex:none;height:clamp(260px,50svh,560px)}
+  .wrap .side{min-width:0;overflow:visible}
+  .wrap .hdr{flex-wrap:wrap}
+  .wrap .hstat{flex-wrap:wrap}
+}
+@media screen and (max-width:560px){
+  .wrap .hdr{padding:12px 14px;gap:12px}
+  .wrap .brand>div{min-width:0}
+  .wrap .brand h1{white-space:normal}
+  .wrap .hstat{width:100%;gap:8px}
+  .wrap .homelink,.wrap .prov,.wrap .gps,.wrap .live{min-height:44px;display:inline-flex;align-items:center}
+  .wrap .stagewrap,.wrap .side{padding:12px}
+  .wrap .seg button,.wrap .btn,.wrap .vclear{min-height:44px}
+  .wrap .inc .top{flex-wrap:wrap}
+  .wrap .thr input{min-height:32px}
+  .report{padding:12px 8px}
+  .sheet{flex-shrink:0;overflow-wrap:anywhere}
+  .rhead{padding:20px 16px;flex-direction:column;gap:12px}
+  .rbadge{text-align:left}
+  .rbody{padding:20px 16px}
+  .rmeta{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rmeta input{font-size:16px}
+  .sevrow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .find{flex-direction:column;padding:12px}
+  .rfoot{padding:16px}
+  .rfoot button{flex:1;min-height:44px}
+}

@@ -68,3 +68,18 @@ a:focus-visible{outline:3px solid var(--green);outline-offset:5px}
 .landing-page .footer-inner{gap:14px}
 .landing-page .footer-inner p{font-size:11px}
 .landing-page .footer-brand .brand-logo{width:80px}
+/* Keep phone layouts readable without horizontal page scrolling. */
+.landing-page .hero-copy,.contact-form label{min-width:0}
+.contact-form input,.contact-form textarea{width:100%;min-width:0;font-size:16px}
+@media(max-width:560px){
+  .landing-page .hero h1{font-size:clamp(36px,9vw,45px);line-height:1.05}
+  .landing-page .hero-grid{padding:36px 0;min-height:0}
+  .landing-page .hero-actions{align-items:stretch;margin-top:28px;gap:12px}
+  .landing-page .hero-actions .btn{justify-content:center;min-height:48px;flex:none}
+  .landing-page .process-strip{height:auto;padding:22px 14px;display:grid;grid-template-columns:1fr 1fr;gap:18px;text-align:center;font-size:10px;line-height:1.5}
+  .landing-page .process-strip>span{display:none}
+  .landing-page .contact-band{padding:56px 0}
+  .landing-page .footer-africa{grid-template-columns:1fr;gap:18px}
+  .landing-page .afretec-logo{width:100px}
+  .landing-page .nav-cta{display:inline-flex;align-items:center;min-height:44px}
+}

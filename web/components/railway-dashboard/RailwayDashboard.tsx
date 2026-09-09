@@ -254,7 +254,7 @@ function StatusBadge({ status }: { status: ReviewStatus }) {
 function DetectionTable({ records, total, selectedId, onSelect, onReview }: { records: CableDetection[]; total: number; selectedId: string | null; onSelect: (id: string) => void; onReview: (r: CableDetection) => void }) {
   return <section className={`${styles.card} ${styles.tableCard}`}>
     <div className={styles.cardHeader}><div><p className={styles.eyebrow}>Latest findings</p><h2>Detection queue</h2></div><span className={styles.countPill}>{total} results</span></div>
-    <div className={styles.tableScroll}>
+    <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Detection queue, scroll horizontally to see all columns">
       <table>
         <thead><tr><th>Detection</th><th>Fault</th><th>Confidence</th><th>Status</th><th>Detected</th><th><span className={styles.srOnly}>Action</span></th></tr></thead>
         <tbody>

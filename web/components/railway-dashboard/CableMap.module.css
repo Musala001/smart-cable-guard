@@ -19,3 +19,9 @@
 :global(.leaflet-tooltip){position:absolute;padding:6px;background:#fff;border:1px solid #fff;border-radius:3px;box-shadow:0 1px 3px #0006;color:#222;white-space:nowrap;user-select:none;pointer-events:none}:global(.leaflet-tooltip-bottom){margin-top:6px}
 @media(max-width:550px){.wrapper{height:375px}.legend{left:8px;bottom:43px;padding:8px;gap:8px;max-width:calc(100% - 16px);font-size:.75rem}.disclaimer{font-size:.75rem;left:8px;top:8px}.fitButton{top:74px}}
 
+
+@media(max-width:680px){
+  .fitButton{width:44px;height:44px;top:112px}
+  .loading{max-width:calc(100% - 30px)}
+  :global(.leaflet-bar a){width:44px;height:44px;line-height:44px}
+}

@@ -90,3 +90,43 @@
 .main .topbar p:last-child{color:#9fb3a8}
 .main > section > .sectionHeading h2{color:#eaf2ec}
 .main .sectionHeading .eyebrow{color:#7aa890}
+
+/* Flexible toolbars and reports, including narrow phones and keyboards. */
+.topActions{flex-wrap:wrap}
+.topbar>div,.workspace>*,.mapView>*,.inspectionCard>div{min-width:0}
+.modalBackdrop{overflow-y:auto}
+.modal{max-height:calc(100dvh - 44px);overflow-y:auto}
+.reportSheet{flex-shrink:0;overflow-wrap:anywhere}
+@media screen and (max-width:1180px){
+  .topbar{flex-wrap:wrap}
+  .filters{flex-wrap:wrap}
+  .searchField{min-width:0;flex-basis:100%;max-width:none}
+}
+@media screen and (max-width:680px){
+  .sidebar{height:calc(67px + env(safe-area-inset-bottom));padding-bottom:calc(7px + env(safe-area-inset-bottom))}
+  .main{padding-bottom:calc(95px + env(safe-area-inset-bottom))}
+  .toast{bottom:calc(80px + env(safe-area-inset-bottom));max-width:calc(100% - 28px);width:max-content}
+  .primaryButton,.secondaryButton,.iconButton,.tableAction,.showButton,.clearButton,.inspectionCard button{min-height:44px}
+  .iconButton{min-width:44px;flex-shrink:0}
+  .searchField,.selectField{height:44px}
+  .searchField input,.selectField select,.formField select,.formField textarea{font-size:16px}
+  .selectField{min-width:0}
+  .selectField select{width:100%;min-width:0}
+  .sectionHeading,.cardHeader{flex-wrap:wrap;gap:12px}
+  .detailHeader{gap:10px;overflow-wrap:anywhere}
+  .qualityList div{flex-wrap:wrap;gap:8px}
+  .modal{max-height:calc(100dvh - 24px)}
+  .modal h2{padding-right:40px;overflow-wrap:anywhere}
+  .reportBackdrop{padding:12px 8px}
+  .rHead{padding:20px 16px;flex-direction:column;gap:12px}
+  .rBadge{text-align:left}
+  .rBody{padding:20px 16px}
+  .rMeta{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rSum{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rFind{flex-direction:column;padding:12px}
+  .rFoot{padding:16px}
+  .rFoot button{flex:1;min-height:44px}
+}
+.tableScroll:focus-visible{outline:2px solid var(--mint-strong);outline-offset:-2px}
+/* Contain the absolutely positioned accessible table heading while scrolling. */
+.tableScroll{position:relative}
