@@ -371,7 +371,7 @@ export default function Page() {
       <header className="hdr">
         <div className="brand">
           <div className="mark"><img src="/rail-landing/rail-logo.jpeg" alt="rAIL" /></div>
-          <div><h1>Cable-Guard</h1><span>AI cable inspection · field scanner</span></div>
+                    <div><h1>rAIL</h1><span>Railway intelligence</span></div>
         </div>
         <div className="hstat">
 	  <a href="/" className="homelink">← Home</a>

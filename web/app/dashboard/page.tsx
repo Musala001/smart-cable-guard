@@ -45,7 +45,7 @@ export default function DashboardPage() {
       inspections={inspections}
       onReviewSave={saveReview}
       onDeleteInspection={deleteInspection}
-      workspaceName="Cable-Guard"
+      workspaceName="rAIL"
     />
   );
 }

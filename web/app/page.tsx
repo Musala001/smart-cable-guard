@@ -80,9 +80,25 @@ export default function LandingPage() {
             <article><div className="feature-icon">02</div><h3>Map-ready findings</h3><p>Every detection carries GPS coordinates for the dashboard map.</p></article>
             <article><div className="feature-icon">03</div><h3>Human in the loop</h3><p>Confirm, resolve or dismiss every model finding.</p></article>
           </div>
+                </section>
+
+                <section className="contact-band">
+          <div className="container contact-inner">
+            <div className="eyebrow">Get in touch</div>
+            <h2>Get in touch</h2>
+            <p>Have questions or ready to transform your inspection workflows? We'd love to hear from you.</p>
+            <form className="contact-form" action="mailto:kamogelomacena@gmail.com" method="post" encType="text/plain">
+              <div className="cf-row">
+                <label>Name<input type="text" name="Name" required /></label>
+                <label>Email<input type="email" name="Email" required /></label>
+              </div>
+              <label>Company<input type="text" name="Company" /></label>
+              <label>Message<textarea name="Message" rows={5} required /></label>
+              <button type="submit" className="cf-send">Send message <span aria-hidden="true">➤</span></button>
+            </form>
+          </div>
         </section>
       </main>
-
       <footer>
         <div className="container footer-africa">
           <img className="afretec-logo" src="/rail-landing/afretec-network.jpeg" alt="AFRETEC Network by Carnegie Mellon-Africa" width={1030} height={1153} loading="lazy" />
