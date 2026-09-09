@@ -1,4 +1,5 @@
 "use client";
+import { Icon } from "../../components/railway-dashboard/Icon";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { incidentToDetection, appendDetections, buildInspection, saveInspection } from "../../components/railway-dashboard/bridge";
 
@@ -362,7 +363,7 @@ export default function Page() {
   const counts = { Critical: 0, High: 0, Medium: 0 } as Record<Sev, number>;
   incidents.forEach(i => counts[i.sev]++);
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0"), ss = String(elapsed % 60).padStart(2, "0");
-  const aiTag = ai ? (ai.cablePresent === "yes" ? { t: "Cable confirmed", c: "#35E0C4" } : ai.cablePresent === "no" ? { t: "No cable seen", c: "#FF5A3C" } : { t: "Unclear view", c: "#C99A18" }) : null;
+  const aiTag = ai ? (ai.cablePresent === "yes" ? { t: "Cable confirmed", c: "var(--brand)" } : ai.cablePresent === "no" ? { t: "No cable seen", c: "#FF5A3C" } : { t: "Unclear view", c: "#C99A18" }) : null;
   const sideConcern = ai && ai.concerns && !["none visible", "none", "n/a"].includes(ai.concerns.toLowerCase().trim()) && ai.cablePresent !== "no";
   const falsePos = ai && ai.cablePresent === "no" && incidents.length > 0;
 
@@ -370,14 +371,14 @@ export default function Page() {
     <div className="wrap">
       <header className="hdr">
         <div className="brand">
-          <div className="mark"><img src="/rail-landing/rail-logo.jpeg" alt="rAIL" /></div>
+          <div className="mark"><img src="/brand/rail-logo.png" alt="rAIL" /></div>
                     <div><h1>rAIL</h1><span>Railway intelligence</span></div>
         </div>
         <div className="hstat">
-	  <a href="/" className="homelink">← Home</a>
-          <a href="/dashboard" className="prov" style={{ textDecoration: "none" }}>Dashboard →</a>
+	  <a href="/" className="homelink"><Icon name="back" size={16} />Home</a>
+          <a href="/dashboard" className="prov" style={{ textDecoration: "none" }}>Dashboard <Icon name="arrow" size={16} /></a>
           <span className={"gps" + (geo ? " on" : "")} title={geo ? `±${geo.acc.toFixed(0)}m` : "No location"}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M12 21s7-6.4 7-11a7 7 0 1 0-14 0c0 4.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>
+            <Icon name="location" size={14} />
             {geo ? "GPS" : "—"}
           </span>
           <span className="prov">server</span>
@@ -389,9 +390,9 @@ export default function Page() {
         <div className="stagewrap">
           <div className="stage">
             <canvas ref={canvasRef} />
-            {mode === "live" && !running && !err && <div className="overlay"><button className="cta" onClick={startCam}>Start scan</button><p>Point the camera along a cable to inspect for breaks, arc faults and foreign objects.</p></div>}
-            {mode === "video" && !hasVideo && !err && <div className="overlay"><label className="cta">Upload footage<input type="file" accept="video/*" hidden onChange={onVideo} /></label><p>Upload a line-scan video. Pause any time and run AI Analysis on that frame.</p></div>}
-            {mode === "image" && !imgRef.current && !err && <div className="overlay"><label className="cta">Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label><p>Analyse a single still image at full resolution.</p></div>}
+            {mode === "live" && !running && !err && <div className="overlay"><button className="cta" onClick={startCam}><Icon name="scan" size={18} />Start scan</button><p>Point the camera along a cable to inspect for breaks, arc faults and foreign objects.</p></div>}
+            {mode === "video" && !hasVideo && !err && <div className="overlay"><label className="cta"><Icon name="upload" size={18} />Upload footage<input type="file" accept="video/*" hidden onChange={onVideo} /></label><p>Upload a line-scan video. Pause any time and run AI Analysis on that frame.</p></div>}
+            {mode === "image" && !imgRef.current && !err && <div className="overlay"><label className="cta"><Icon name="image" size={18} />Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label><p>Analyse a single still image at full resolution.</p></div>}
             {busyImg && <div className="overlay"><div className="spin" /><p>Analysing image…</p></div>}
             {err && <div className="overlay err"><p>{err}</p></div>}
           </div>
@@ -403,24 +404,24 @@ export default function Page() {
 
         <aside className="side">
           <div className="seg">
-            <button className={mode === "live" ? "on" : ""} onClick={() => switchMode("live")}>Live</button>
-            <button className={mode === "video" ? "on" : ""} onClick={() => switchMode("video")}>Video</button>
-            <button className={mode === "image" ? "on" : ""} onClick={() => switchMode("image")}>Image</button>
+            <button className={mode === "live" ? "on" : ""} onClick={() => switchMode("live")}><Icon name="camera" size={18} />Live</button>
+            <button className={mode === "video" ? "on" : ""} onClick={() => switchMode("video")}><Icon name="video" size={18} />Video</button>
+            <button className={mode === "image" ? "on" : ""} onClick={() => switchMode("image")}><Icon name="image" size={18} />Image</button>
           </div>
 
           <div className="ctl">
-            {mode === "live" && (running ? <button className="btn stop" onClick={() => stopCam(true)}>Stop scan</button> : <button className="btn go" onClick={startCam}>Start scan</button>)}
-            {mode === "video" && <label className="btn go">{hasVideo ? "Replace footage" : "Upload footage"}<input type="file" accept="video/*" hidden onChange={onVideo} /></label>}
-            {mode === "image" && <label className="btn go">Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label>}
+            {mode === "live" && (running ? <button className="btn stop" onClick={() => stopCam(true)}><Icon name="stop" size={18} />Stop scan</button> : <button className="btn go" onClick={startCam}><Icon name="scan" size={18} />Start scan</button>)}
+            {mode === "video" && <label className="btn go"><Icon name="upload" size={18} />{hasVideo ? "Replace footage" : "Upload footage"}<input type="file" accept="video/*" hidden onChange={onVideo} /></label>}
+            {mode === "image" && <label className="btn go"><Icon name="image" size={18} />Choose image<input type="file" accept="image/*" hidden onChange={onImage} /></label>}
           </div>
 
           <button className="btn ai" onClick={runAI} disabled={aiBusy} style={{ width: "100%" }}>
-            {aiBusy ? "Analysing…" : "AI Analysis" + (mode === "video" ? " (current frame)" : "")}
+            <Icon name="ai" size={18} />{aiBusy ? "Analysing…" : "AI Analysis" + (mode === "video" ? " (current frame)" : "")}
           </button>
 
           {savedBanner && <a href="/dashboard" className="savedbanner">
             <span>Inspection saved · {incidents.length} finding{incidents.length === 1 ? "" : "s"}</span>
-            <strong>View in dashboard →</strong>
+            <strong>View in dashboard <Icon name="arrow" size={16} /></strong>
           </a>}
 
           <div className="stats">

@@ -136,7 +136,7 @@ export function RailwayDashboard({
   return <div className={styles.shell}>
     <aside className={styles.sidebar}>
       <div className={styles.brand}>
-        <img src={`${normalizedAssetPath}/logo.jpeg`} alt="rAIL" className={styles.brandImage} />
+        <img src="/brand/rail-logo.png" alt="rAIL" className={styles.brandImage} />
         <span>Railway intelligence</span>
       </div>
       <nav className={styles.navigation} aria-label="Dashboard">
@@ -158,7 +158,7 @@ export function RailwayDashboard({
           <p>Monitor, inspect and report on detected cable faults.</p>
         </div>
         <div className={styles.topActions}>
-                   <a href="/" className={styles.secondaryButton} style={{ textDecoration: "none" }}>← Home</a>
+                   <a href="/" className={styles.secondaryButton} style={{ textDecoration: "none" }}><Icon name="back" />Home</a>
           <a href="/detect" className={styles.secondaryButton} style={{ textDecoration: "none" }}><Icon name="scan" />Detector</a>
           <button type="button" className={styles.secondaryButton} onClick={exportAllCsv} disabled={!hasData}><Icon name="download" />CSV</button>
           <button type="button" className={styles.primaryButton} onClick={exportAllJson} disabled={!hasData}><Icon name="download" />Export</button>
