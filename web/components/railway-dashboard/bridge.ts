@@ -39,7 +39,7 @@ export function incidentToDetection(inc: IncidentLike, inspectionId: string): Ca
   if (!inc.geo) return null;
   const cls = CLASS_NAMES[inc.cls] ?? "Cable fault";
   return {
-    id: `CG-${inc.ts}`,
+    id: `${inspectionId}-${inc.id}`,
     type: "Damaged cable",
     latitude: inc.geo.lat,
     longitude: inc.geo.lon,
@@ -62,12 +62,15 @@ export function readDetections(): CableDetection[] {
 export function appendDetections(items: CableDetection[]) {
   if (!items.length) return;
   const byId = new Map(readDetections().map((d) => [d.id, d]));
-  for (const it of items) byId.set(it.id, it);
+  for (const it of items) {
+    const existing = byId.get(it.id);
+    byId.set(it.id, existing ? { ...it, status: existing.status, note: existing.note } : it);
+  }
   const merged = [...byId.values()].sort((a, b) => (Date.parse(b.detectedAt || "") || 0) - (Date.parse(a.detectedAt || "") || 0)).slice(0, 500);
-  try { localStorage.setItem(DETECTIONS_KEY, JSON.stringify(merged)); } catch {}
+  localStorage.setItem(DETECTIONS_KEY, JSON.stringify(merged));
 }
 export function writeDetections(items: CableDetection[]) {
-  try { localStorage.setItem(DETECTIONS_KEY, JSON.stringify(items)); } catch {}
+  localStorage.setItem(DETECTIONS_KEY, JSON.stringify(items));
 }
 
 // ---- full inspection records (for reports) ----
@@ -76,7 +79,7 @@ export function readInspections(): InspectionRecord[] {
   catch { return []; }
 }
 export function writeInspections(items: InspectionRecord[]) {
-  try { localStorage.setItem(INSPECTIONS_KEY, JSON.stringify(items)); } catch {}
+  localStorage.setItem(INSPECTIONS_KEY, JSON.stringify(items));
 }
 export function saveInspection(rec: InspectionRecord) {
   const all = readInspections().filter((x) => x.id !== rec.id);
@@ -85,14 +88,13 @@ export function saveInspection(rec: InspectionRecord) {
 }
 
 export function buildInspection(args: {
-  incidents: IncidentLike[]; ai: AILike; mode: string; frames: number;
+  id?: string; createdAt?: string; incidents: IncidentLike[]; ai: AILike; mode: string; frames: number;
   durationSec: number; hero: string | null; geo: IncidentLike["geo"]; operator: string;
 }): InspectionRecord | null {
-  if (args.incidents.length === 0 && !args.ai) return null;
-  const id = `INS-${Date.now()}`;
+  const id = args.id ?? `INS-${crypto.randomUUID()}`;
   return {
     id,
-    createdAt: new Date().toISOString(),
+    createdAt: args.createdAt ?? new Date().toISOString(),
     mode: args.mode,
     operator: args.operator,
     frames: args.frames,

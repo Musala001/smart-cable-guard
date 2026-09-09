@@ -1,7 +1,7 @@
 "use client";
 import { Icon } from "../../components/railway-dashboard/Icon";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { incidentToDetection, appendDetections, buildInspection, saveInspection } from "../../components/railway-dashboard/bridge";
+import { incidentToDetection, appendDetections, buildInspection, saveInspection, readInspections } from "../../components/railway-dashboard/bridge";
 
 type Det = { x: number; y: number; w: number; h: number; score: number; cls: number };
 type Track = { id: number; cls: number; x: number; y: number; w: number; h: number; hits: number; missed: number; peak: number; logged: boolean };
@@ -79,6 +79,10 @@ export default function Page() {
   const aiRef = useRef<AI | null>(null);
   const heroRef = useRef<string | null>(null);
   const geoRef = useRef<Geo>(null);
+  const scanEndedRef = useRef<number | null>(null);
+  const inspectionIdRef = useRef<string>("");
+  const persistRef = useRef<() => void>(() => {});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const watchRef = useRef<number | null>(null);
 
   useEffect(() => { threshRef.current = thresh; }, [thresh]);
@@ -124,8 +128,7 @@ export default function Page() {
     const inc: Incident = { id, cls, sev, conf, ts: Date.now(), thumb: makeThumb(src, box, sw, sh), action: actionFor(cls, sev), areaFrac, persist, region: regionOf((box.y + box.h / 2) / sh), geo: geoRef.current };
     incRef.current = [inc, ...incRef.current].slice(0, 200);
     setIncidents(incRef.current);
-    const rec = incidentToDetection(inc as any, `INS-${new Date().toISOString().slice(0, 10)}`);
-    if (rec) appendDetections([rec]);
+    persistRef.current();
   }, [makeThumb]);
 
   const track = useCallback((dets: Det[], src: CanvasImageSource, sw: number, sh: number) => {
@@ -235,51 +238,90 @@ export default function Page() {
 
   const runAI = useCallback(async () => {
     const image = grabFrame(); if (!image) { setAiErr("No frame to analyse."); return; }
+    const scanId = inspectionIdRef.current;
     setAiBusy(true); setAiErr(null);
     const f = incRef.current.length ? incRef.current.slice(0, 5).map(i => `${NAMES[i.cls]} (${(i.conf * 100).toFixed(0)}%)`).join(", ") : "no faults detected";
     try {
       const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image, findings: f }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "failed");
-      setAi(d); aiRegionsRef.current = d.regions || [];
+      if (scanId !== inspectionIdRef.current) { setAiBusy(false); return; }
+      aiRef.current = d; setAi(d); aiRegionsRef.current = d.regions || [];
       const src: any = mode === "image" ? imgRef.current : videoRef.current;
       const sw = mode === "image" ? imgRef.current!.naturalWidth : videoRef.current!.videoWidth;
       const sh = mode === "image" ? imgRef.current!.naturalHeight : videoRef.current!.videoHeight;
       if (src && sw) { draw(src, sw, sh, lastBoxesRef.current); captureHero(src, sw, sh, lastBoxesRef.current); }
+      persistRef.current();
     } catch (e: any) { setAiErr(e?.message || "AI analysis failed."); }
     setAiBusy(false);
   }, [grabFrame, mode, draw, captureHero]);
 
-    const commitInspection = useCallback(async (m: string) => {
-    // auto-run the vision review if there are findings and it hasn't run yet
-    if (incRef.current.length > 0 && !aiRef.current) {
-      const image = grabFrame();
-      if (image) {
-        setAiBusy(true);
-        const f = incRef.current.slice(0, 5).map(i => `${NAMES[i.cls]} (${(i.conf * 100).toFixed(0)}%)`).join(", ");
-        try {
-          const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image, findings: f }) });
-          const d = await r.json();
-          if (r.ok) {
-            aiRef.current = d; setAi(d); aiRegionsRef.current = d.regions || [];
-            const src: any = m === "image" ? imgRef.current : videoRef.current;
-            const sw = m === "image" ? imgRef.current?.naturalWidth : videoRef.current?.videoWidth;
-            const sh = m === "image" ? imgRef.current?.naturalHeight : videoRef.current?.videoHeight;
-            if (src && sw) { draw(src, sw!, sh!, lastBoxesRef.current); captureHero(src, sw!, sh!, lastBoxesRef.current); }
-          }
-        } catch {}
-        setAiBusy(false);
-      }
+  const snapshotInspection = useCallback((m: string) => {
+    if (!inspectionIdRef.current || (!framesRef.current && !incRef.current.length && !aiRef.current && !heroRef.current)) return null;
+    return buildInspection({ id: inspectionIdRef.current, createdAt: new Date(startRef.current).toISOString(),
+      incidents: incRef.current, ai: aiRef.current, mode: m,
+      frames: framesRef.current, durationSec: Math.round(((scanEndedRef.current ?? Date.now()) - startRef.current) / 1000),
+      hero: heroRef.current, geo: geoRef.current, operator: "Grid Operator" });
+  }, []);
+
+  const persistInspection = useCallback((rec: NonNullable<ReturnType<typeof buildInspection>>) => {
+    try {
+      saveInspection(rec);
+      appendDetections(rec.findings.flatMap(f => {
+        const detection = incidentToDetection({ ...f, id: Number(f.id.slice(rec.id.length + 1)),
+          geo: f.lat == null || f.lon == null ? null : { lat: f.lat, lon: f.lon, acc: 0 } }, rec.id);
+        return detection ? [detection] : [];
+      }));
+      if (inspectionIdRef.current === rec.id) { setSavedBanner(true); setSaveError(null); }
+    } catch {
+      setSavedBanner(false);
+      setSaveError("Could not save this inspection. Browser storage may be full or unavailable. Free space and retry saving.");
     }
-    const rec = buildInspection({
-      incidents: incRef.current as any, ai: aiRef.current, mode: m,
-      frames: framesRef.current, durationSec: Math.round((Date.now() - startRef.current) / 1000),
-      hero: heroRef.current, geo: geoRef.current, operator: "Grid Operator",
-    });
-    if (rec) { saveInspection(rec); setSavedBanner(true); }
-  }, [grabFrame, draw, captureHero]);
+  }, []);
+
+  persistRef.current = () => { const rec = snapshotInspection(mode); if (rec) persistInspection(rec); };
+
+  const commitInspection = useCallback(async (m: string) => {
+    scanEndedRef.current = Date.now();
+    const rec = snapshotInspection(m);
+    if (!rec) return;
+    // Save before the network request; a new scan must never replace this snapshot.
+    persistInspection(rec);
+    if (rec.findings.length && !rec.ai) {
+      const image = grabFrame();
+      if (!image) return;
+      setAiBusy(true);
+      try {
+        const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image, findings: rec.findings.slice(0, 5).map(f => f.className).join(", ") }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "AI analysis failed.");
+        // Update only the original report, preserving newer manual reviews and deletions.
+        const saved = readInspections().find(i => i.id === rec.id);
+        if (saved && !saved.ai) {
+          if (inspectionIdRef.current === rec.id && !aiRef.current) {
+            aiRef.current = d; setAi(d); aiRegionsRef.current = d.regions || [];
+          }
+          persistInspection({ ...saved, ai: d });
+        }
+      } catch (e: any) { if (inspectionIdRef.current === rec.id) setAiErr(e?.message || "AI analysis failed."); }
+      finally { setAiBusy(false); }
+    }
+  }, [snapshotInspection, persistInspection, grabFrame]);
+
+  useEffect(() => {
+    const save = () => persistRef.current();
+    const timer = window.setInterval(save, 4000);
+    window.addEventListener("pagehide", save);
+    return () => { save(); window.clearInterval(timer); window.removeEventListener("pagehide", save); };
+  }, []);
 
   const resetScan = useCallback(() => {
+    persistRef.current();
+    inspectionIdRef.current = `INS-${crypto.randomUUID()}`;
+    startRef.current = Date.now();
+    scanEndedRef.current = null;
+    setSaveError(null);
     tracksRef.current = []; incRef.current = []; setIncidents([]); framesRef.current = 0; setElapsed(0);
     setAi(null); setAiErr(null); aiRef.current = null; lastBoxesRef.current = []; aiRegionsRef.current = []; heroRef.current = null;
     setSavedBanner(false);
@@ -328,14 +370,17 @@ export default function Page() {
     runningRef.current = false; cancelAnimationFrame(rafRef.current);
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     resetScan(); setErr(null); setBusyImg(true); setHasVideo(false);
+    const scanId = inspectionIdRef.current;
     const img = new Image();
     img.onload = () => {
+      if (scanId !== inspectionIdRef.current) return;
       imgRef.current = img;
       requestAnimationFrame(async () => {
         fitCanvas();
         draw(img, img.naturalWidth, img.naturalHeight, []);
         try {
           const dets = await detect(img, img.naturalWidth, img.naturalHeight, 900);
+          if (scanId !== inspectionIdRef.current) return;
           lastBoxesRef.current = dets;
           draw(img, img.naturalWidth, img.naturalHeight, dets);
           captureHero(img, img.naturalWidth, img.naturalHeight, dets);
@@ -419,6 +464,7 @@ export default function Page() {
             <Icon name="ai" size={18} />{aiBusy ? "Analysing…" : "AI Analysis" + (mode === "video" ? " (current frame)" : "")}
           </button>
 
+          {saveError && <div role="alert"><p>{saveError}</p><button onClick={() => persistRef.current()}>Retry save</button></div>}
           {savedBanner && <a href="/dashboard" className="savedbanner">
             <span>Inspection saved · {incidents.length} finding{incidents.length === 1 ? "" : "s"}</span>
             <strong>View in dashboard <Icon name="arrow" size={16} /></strong>

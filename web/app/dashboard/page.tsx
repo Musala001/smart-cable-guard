@@ -41,7 +41,7 @@ export default function DashboardPage() {
 
   return (
     <RailwayDashboard
-      initialDetections={detections.length ? detections : undefined}
+      initialDetections={detections}
       inspections={inspections}
       onReviewSave={saveReview}
       onDeleteInspection={deleteInspection}

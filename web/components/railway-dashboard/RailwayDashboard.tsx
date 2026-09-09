@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CableMap } from "./CableMap";
 import { filterDetections, recordsToCsv, STATUS_LABEL } from "./data";
 import { Icon, type IconName } from "./Icon";
@@ -63,6 +63,10 @@ export function RailwayDashboard({
   const [openReport, setOpenReport] = useState<InspectionRecord | null>(null);
   const [toast, setToast] = useState("");
 
+  useEffect(() => {
+    setRecords((initialDetections ?? []).map(r => ({ ...r })));
+  }, [initialDetections]);
+
   const hasData = records.length > 0;
   const filtered = useMemo(() => filterDetections(records, { search, status }), [records, search, status]);
   const selected = useMemo(() => records.find((r) => r.id === selectedId) ?? null, [records, selectedId]);
@@ -88,8 +92,10 @@ export function RailwayDashboard({
   async function saveReview() {
     if (!selected) return;
     const updated = { ...selected, status: draftStatus, note: draftNote.trim() };
-    setRecords((cur) => cur.map((r) => r.id === updated.id ? updated : r));
-    try { await onReviewSave?.(updated, { status: draftStatus, note: draftNote.trim() }); } catch {}
+    try {
+      await onReviewSave?.(updated, { status: draftStatus, note: draftNote.trim() });
+      setRecords((cur) => cur.map((r) => r.id === updated.id ? updated : r));
+    } catch { flash("Review could not be saved. Please retry."); return; }
     setReviewOpen(false); flash(`${updated.id} review saved.`);
   }
 
@@ -240,7 +246,7 @@ export function RailwayDashboard({
       </section>
     </div>}
 
-    {openReport && <ReportModal inspection={openReport} onClose={() => setOpenReport(null)} onDelete={onDeleteInspection ? (id) => { onDeleteInspection(id); setOpenReport(null); flash("Inspection deleted."); } : undefined} />}
+    {openReport && <ReportModal detections={records} inspection={inspections.find(i => i.id === openReport.id) ?? openReport} onClose={() => setOpenReport(null)} onDelete={onDeleteInspection ? (id) => { try { onDeleteInspection(id); setOpenReport(null); flash("Inspection deleted."); } catch { flash("Inspection could not be deleted. Please retry."); } } : undefined} />}
 
     <div className={`${styles.toast} ${toast ? styles.toastVisible : ""}`} role="status" aria-live="polite">{toast}</div>
   </div>;
@@ -293,8 +299,9 @@ function DetailPanel({ detection, onClose, onReview }: { detection: CableDetecti
   </aside>;
 }
 
-function ReportModal({ inspection, onClose, onDelete }: { inspection: InspectionRecord; onClose: () => void; onDelete?: (id: string) => void }) {
+function ReportModal({ inspection, detections, onClose, onDelete }: { detections: CableDetection[]; inspection: InspectionRecord; onClose: () => void; onDelete?: (id: string) => void }) {
   const ins = inspection;
+  const reviewFor = (f: InspectionRecord["findings"][number]) => detections.find(d => d.id === f.id || d.id === `CG-${f.ts}`);
   const crit = ins.findings.filter((f) => f.sev === "Critical").length;
   const high = ins.findings.filter((f) => f.sev === "High").length;
   const med = ins.findings.filter((f) => f.sev === "Medium").length;
@@ -306,8 +313,8 @@ function ReportModal({ inspection, onClose, onDelete }: { inspection: Inspection
   const sorted = [...ins.findings].sort((a, b) => (["Medium", "High", "Critical"].indexOf(b.sev) - ["Medium", "High", "Critical"].indexOf(a.sev)) || b.conf - a.conf);
 
   function exportCsv() {
-    const head = "id,type,severity,confidence,region,area_pct,latitude,longitude,action";
-    const body = ins.findings.map((f) => [f.id, f.className, f.sev, (f.conf * 100).toFixed(1), f.region, (f.areaFrac * 100).toFixed(2), f.lat ?? "", f.lon ?? "", `"${f.action.replace(/"/g, "'")}"`].join(",")).join("\n");
+    const head = "id,type,severity,confidence,region,area_pct,latitude,longitude,action,status,note";
+    const body = ins.findings.map((f) => [f.id, f.className, f.sev, (f.conf * 100).toFixed(1), f.region, (f.areaFrac * 100).toFixed(2), f.lat ?? "", f.lon ?? "", `"${f.action.replace(/"/g, '""')}"`, reviewFor(f)?.status ?? "awaiting", `"${(reviewFor(f)?.note ?? "").replace(/"/g, '""')}"`].join(",")).join("\n");
     downloadFile(head + "\n" + body, "text/csv;charset=utf-8", `inspection-${ins.id}.csv`);
   }
 
@@ -369,6 +376,7 @@ function ReportModal({ inspection, onClose, onDelete }: { inspection: Inspection
                   {f.conf < 0.5 && <span className={styles.rVerify}>Verify</span>}
                 </div>
                 <p className={styles.rEv}>{(f.conf * 100).toFixed(0)}% confidence · ~{(f.areaFrac * 100).toFixed(1)}% of frame · {f.region}{f.lat != null ? ` · ${f.lat.toFixed(4)}, ${f.lon!.toFixed(4)}` : ""}</p>
+                <p>Review: {STATUS_LABEL[reviewFor(f)?.status ?? "awaiting"]}{reviewFor(f)?.note ? ` · ${reviewFor(f)?.note}` : ""}</p>
                 <div className={styles.rAct}><b>Recommended action</b>{f.action}</div>
               </div>
             </div>)}
